@@ -504,7 +504,7 @@ def read_root():
     }
 
 @app.post("/predict", response_model=PredictionResponse)
-def predict(payload: dict):
+async def predict(payload: dict):
     # This endpoint is dual-input capable:
     # 1. Standard raw iOS data payload (JSON object containing "motion" or separate "accelerometer" and "gyroscope" lists)
     # 2. Legacy pre-computed 50 features payload (JSON object containing "data" key as dict or list)
