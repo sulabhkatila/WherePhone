@@ -1,0 +1,14 @@
+# ----------------------------
+# Data and results (ignored by default)
+# ----------------------------
+data/*
+
+# Keep folder structure
+!data/.gitkeep
+
+# Allow example datasets
+!data/CustomLab.mat
+!data/CustomFreeLiving.mat
+
+__pycache__/
+venv/
