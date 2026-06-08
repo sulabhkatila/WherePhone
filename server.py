@@ -523,6 +523,16 @@ def predict(payload: dict):
                 x = np.array([input_data[f] for f in selected_features], dtype=float)
         else:
             # Handle raw iOS sensor measurements
+            if not ("motion" in payload or ("accelerometer" in payload and "gyroscope" in payload)):
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Unrecognized payload format. Expected one of: "
+                        "(1) {\"data\": [...]} with 50 pre-computed features, "
+                        "(2) {\"motion\": [...]} with combined CoreMotion samples, or "
+                        "(3) {\"accelerometer\": [...], \"gyroscope\": [...]} with separate sensor arrays."
+                    )
+                )
             x = ios_dataformat(payload)
             
         results = run_predictions(x)
