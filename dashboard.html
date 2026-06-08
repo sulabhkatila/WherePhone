@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WherePhone — Live Dashboard</title>
+    <meta name="description" content="Real-time smartphone placement recognition dashboard">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        *, *::before, *::after {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-primary: #0a0f1e;
+            --bg-secondary: #111827;
+            --bg-card: rgba(255, 255, 255, 0.04);
+            --bg-card-hover: rgba(255, 255, 255, 0.07);
+            --border-subtle: rgba(255, 255, 255, 0.08);
+            --border-active: rgba(99, 140, 255, 0.3);
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --accent-blue: #638cff;
+            --accent-purple: #a78bfa;
+            --accent-green: #34d399;
+            --accent-amber: #fbbf24;
+            --accent-red: #f87171;
+            --accent-cyan: #22d3ee;
+            --glow-blue: rgba(99, 140, 255, 0.15);
+            --glow-green: rgba(52, 211, 153, 0.15);
+            --glow-red: rgba(248, 113, 113, 0.15);
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* Animated background gradient orbs */
+        body::before, body::after {
+            content: '';
+            position: fixed;
+            border-radius: 50%;
+            filter: blur(120px);
+            opacity: 0.3;
+            pointer-events: none;
+            z-index: 0;
+        }
+        body::before {
+            width: 600px; height: 600px;
+            top: -200px; right: -100px;
+            background: radial-gradient(circle, var(--accent-blue), transparent 70%);
+            animation: float-orb 20s ease-in-out infinite;
+        }
+        body::after {
+            width: 500px; height: 500px;
+            bottom: -150px; left: -100px;
+            background: radial-gradient(circle, var(--accent-purple), transparent 70%);
+            animation: float-orb 25s ease-in-out infinite reverse;
+        }
+        @keyframes float-orb {
+            0%, 100% { transform: translate(0, 0) scale(1); }
+            33% { transform: translate(30px, -40px) scale(1.1); }
+            66% { transform: translate(-20px, 20px) scale(0.95); }
+        }
+
+        .container {
+            position: relative;
+            z-index: 1;
+            max-width: 960px;
+            margin: 0 auto;
+            padding: 40px 24px;
+        }
+
+        /* Header */
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 40px;
+        }
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        .header-icon {
+            width: 48px; height: 48px;
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            box-shadow: 0 8px 32px rgba(99, 140, 255, 0.25);
+        }
+        .header h1 {
+            font-size: 26px;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            background: linear-gradient(135deg, var(--text-primary), var(--accent-blue));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .header-subtitle {
+            font-size: 13px;
+            color: var(--text-muted);
+            font-weight: 500;
+        }
+
+        /* Connection badge */
+        .connection-badge {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            border-radius: 100px;
+            font-size: 13px;
+            font-weight: 600;
+            transition: all 0.4s ease;
+        }
+        .connection-badge.connected {
+            background: var(--glow-green);
+            color: var(--accent-green);
+            border: 1px solid rgba(52, 211, 153, 0.2);
+        }
+        .connection-badge.disconnected {
+            background: var(--glow-red);
+            color: var(--accent-red);
+            border: 1px solid rgba(248, 113, 113, 0.2);
+        }
+        .connection-dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            position: relative;
+        }
+        .connection-badge.connected .connection-dot {
+            background: var(--accent-green);
+            box-shadow: 0 0 8px var(--accent-green);
+        }
+        .connection-badge.connected .connection-dot::after {
+            content: '';
+            position: absolute;
+            inset: -3px;
+            border-radius: 50%;
+            border: 2px solid var(--accent-green);
+            animation: pulse-ring 2s ease-out infinite;
+        }
+        .connection-badge.disconnected .connection-dot {
+            background: var(--accent-red);
+        }
+        @keyframes pulse-ring {
+            0% { transform: scale(1); opacity: 0.6; }
+            100% { transform: scale(2); opacity: 0; }
+        }
+
+        /* Main placement card */
+        .placement-hero {
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: 24px;
+            padding: 48px 32px;
+            text-align: center;
+            margin-bottom: 24px;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.5s ease;
+        }
+        .placement-hero::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple), var(--accent-cyan));
+            opacity: 0;
+            transition: opacity 0.4s ease;
+        }
+        .placement-hero.active::before {
+            opacity: 1;
+        }
+        .placement-hero-label {
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 2px;
+            color: var(--accent-blue);
+            text-transform: uppercase;
+            margin-bottom: 16px;
+        }
+        .placement-hero-icon {
+            font-size: 64px;
+            margin-bottom: 16px;
+            transition: all 0.4s ease;
+            filter: drop-shadow(0 0 20px rgba(99, 140, 255, 0.3));
+        }
+        .placement-hero-text {
+            font-size: 42px;
+            font-weight: 900;
+            letter-spacing: -1px;
+            margin-bottom: 8px;
+            transition: all 0.3s ease;
+            line-height: 1.1;
+        }
+        .placement-hero-code {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text-muted);
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            background: rgba(255, 255, 255, 0.05);
+            display: inline-block;
+            padding: 4px 14px;
+            border-radius: 8px;
+        }
+
+        /* Waiting state pulse */
+        .placement-hero.waiting .placement-hero-text {
+            animation: subtle-pulse 3s ease-in-out infinite;
+        }
+        @keyframes subtle-pulse {
+            0%, 100% { opacity: 0.4; }
+            50% { opacity: 0.7; }
+        }
+
+        /* Classification schemes grid */
+        .schemes-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+        .scheme-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: 16px;
+            padding: 24px;
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+        .scheme-card:hover {
+            background: var(--bg-card-hover);
+            border-color: var(--border-active);
+        }
+        .scheme-label {
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 1.5px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            margin-bottom: 12px;
+        }
+        .scheme-value {
+            font-size: 22px;
+            font-weight: 800;
+            color: var(--text-primary);
+        }
+        .scheme-code {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 4px;
+            font-family: 'SF Mono', 'Fira Code', monospace;
+        }
+
+        /* Status cards row */
+        .status-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+        .status-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: 16px;
+            padding: 20px;
+            transition: all 0.3s ease;
+        }
+        .status-card:hover {
+            background: var(--bg-card-hover);
+        }
+        .status-card-label {
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 1.5px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            margin-bottom: 8px;
+        }
+        .status-card-value {
+            font-size: 20px;
+            font-weight: 700;
+        }
+        .status-card-value.green { color: var(--accent-green); }
+        .status-card-value.amber { color: var(--accent-amber); }
+        .status-card-value.red { color: var(--accent-red); }
+        .status-card-value.blue { color: var(--accent-blue); }
+        .status-card-sub {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+
+        /* Prediction history */
+        .history-section {
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: 20px;
+            padding: 24px;
+        }
+        .history-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 16px;
+        }
+        .history-title {
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 2px;
+            color: var(--accent-blue);
+            text-transform: uppercase;
+        }
+        .history-count {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+        .history-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .history-list::-webkit-scrollbar {
+            width: 4px;
+        }
+        .history-list::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .history-list::-webkit-scrollbar-thumb {
+            background: var(--border-subtle);
+            border-radius: 4px;
+        }
+        .history-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px;
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: 12px;
+            border: 1px solid transparent;
+            transition: all 0.3s ease;
+            animation: slide-in 0.3s ease forwards;
+        }
+        .history-item:first-child {
+            border-color: var(--border-active);
+            background: var(--glow-blue);
+        }
+        @keyframes slide-in {
+            from { opacity: 0; transform: translateY(-8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .history-item-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .history-item-icon {
+            font-size: 20px;
+        }
+        .history-item-label {
+            font-size: 14px;
+            font-weight: 600;
+        }
+        .history-item-time {
+            font-size: 12px;
+            color: var(--text-muted);
+            font-family: 'SF Mono', 'Fira Code', monospace;
+        }
+        .history-empty {
+            text-align: center;
+            padding: 40px 0;
+            color: var(--text-muted);
+            font-size: 14px;
+        }
+        .history-empty-icon {
+            font-size: 32px;
+            margin-bottom: 8px;
+            opacity: 0.5;
+        }
+
+        /* Responsive */
+        @media (max-width: 640px) {
+            .header { flex-direction: column; gap: 16px; align-items: flex-start; }
+            .schemes-grid { grid-template-columns: 1fr; }
+            .status-row { grid-template-columns: 1fr; }
+            .placement-hero-text { font-size: 28px; }
+            .placement-hero-icon { font-size: 48px; }
+            .container { padding: 24px 16px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-left">
+                <div class="header-icon">📱</div>
+                <div>
+                    <h1>WherePhone</h1>
+                    <p class="header-subtitle">Live Placement Dashboard</p>
+                </div>
+            </div>
+            <div id="connectionBadge" class="connection-badge disconnected">
+                <div class="connection-dot"></div>
+                <span id="connectionText">Connecting...</span>
+            </div>
+        </header>
+
+        <!-- Main Placement Display -->
+        <div id="placementHero" class="placement-hero waiting">
+            <div class="placement-hero-label">Detected Placement</div>
+            <div id="placementIcon" class="placement-hero-icon">📡</div>
+            <div id="placementText" class="placement-hero-text">Waiting for data...</div>
+            <div id="placementCode" class="placement-hero-code">—</div>
+        </div>
+
+        <!-- 5-class / 4-class schemes -->
+        <div class="schemes-grid">
+            <div class="scheme-card">
+                <div class="scheme-label">5-Class Scheme</div>
+                <div id="class5Value" class="scheme-value">—</div>
+                <div id="class5Code" class="scheme-code">—</div>
+            </div>
+            <div class="scheme-card">
+                <div class="scheme-label">4-Class Scheme</div>
+                <div id="class4Value" class="scheme-value">—</div>
+                <div id="class4Code" class="scheme-code">—</div>
+            </div>
+        </div>
+
+        <!-- Status Row -->
+        <div class="status-row">
+            <div class="status-card">
+                <div class="status-card-label">Phone Status</div>
+                <div id="phoneStatus" class="status-card-value amber">Waiting</div>
+                <div id="phoneSub" class="status-card-sub">No data yet</div>
+            </div>
+            <div class="status-card">
+                <div class="status-card-label">Predictions</div>
+                <div id="predCount" class="status-card-value blue">0</div>
+                <div class="status-card-sub">total received</div>
+            </div>
+            <div class="status-card">
+                <div class="status-card-label">Last Update</div>
+                <div id="lastUpdate" class="status-card-value green">—</div>
+                <div id="lastUpdateSub" class="status-card-sub">—</div>
+            </div>
+        </div>
+
+        <!-- Prediction History -->
+        <div class="history-section">
+            <div class="history-header">
+                <span class="history-title">Prediction History</span>
+                <span id="historyCount" class="history-count">0 entries</span>
+            </div>
+            <div id="historyList" class="history-list">
+                <div class="history-empty">
+                    <div class="history-empty-icon">📭</div>
+                    <div>No predictions yet. Start the WherePhone app on your iPhone.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- State ---
+        let predictionCount = 0;
+        const history = [];
+        const MAX_HISTORY = 50;
+        let ws = null;
+        let reconnectTimer = null;
+        let phoneTimeout = null;
+
+        // --- Label mappings ---
+        const labelMap = {
+            'LB': { name: 'Lower Back', icon: '🔙' },
+            'H':  { name: 'Hand-held', icon: '✋' },
+            'BP': { name: 'Back Pocket', icon: '👖' },
+            'FP': { name: 'Front Pocket', icon: '👖' },
+            'CP': { name: 'Coat Pocket', icon: '🧥' },
+            'SB': { name: 'Shoulder Bag', icon: '👜' },
+            'TP': { name: 'Trousers Pocket', icon: '👖' },
+            'P':  { name: 'Pocket', icon: '👖' },
+        };
+
+        function formatLabel(code) {
+            return labelMap[code]?.name || code;
+        }
+        function getIcon(code) {
+            return labelMap[code]?.icon || '📱';
+        }
+
+        // --- DOM refs ---
+        const $badge = document.getElementById('connectionBadge');
+        const $badgeText = document.getElementById('connectionText');
+        const $hero = document.getElementById('placementHero');
+        const $heroIcon = document.getElementById('placementIcon');
+        const $heroText = document.getElementById('placementText');
+        const $heroCode = document.getElementById('placementCode');
+        const $class5Value = document.getElementById('class5Value');
+        const $class5Code = document.getElementById('class5Code');
+        const $class4Value = document.getElementById('class4Value');
+        const $class4Code = document.getElementById('class4Code');
+        const $phoneStatus = document.getElementById('phoneStatus');
+        const $phoneSub = document.getElementById('phoneSub');
+        const $predCount = document.getElementById('predCount');
+        const $lastUpdate = document.getElementById('lastUpdate');
+        const $lastUpdateSub = document.getElementById('lastUpdateSub');
+        const $historyList = document.getElementById('historyList');
+        const $historyCount = document.getElementById('historyCount');
+
+        // --- WebSocket ---
+        function connect() {
+            const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            ws = new WebSocket(`${protocol}//${location.host}/ws`);
+
+            ws.onopen = () => {
+                $badge.className = 'connection-badge connected';
+                $badgeText.textContent = 'Server Connected';
+                clearTimeout(reconnectTimer);
+            };
+
+            ws.onclose = () => {
+                $badge.className = 'connection-badge disconnected';
+                $badgeText.textContent = 'Disconnected';
+                reconnectTimer = setTimeout(connect, 3000);
+            };
+
+            ws.onerror = () => {
+                ws.close();
+            };
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                if (data.type === 'pong') return;
+                if (data.type === 'prediction' || data.type === 'state') {
+                    handlePrediction(data);
+                }
+            };
+
+            // Keepalive ping
+            setInterval(() => {
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send('ping');
+                }
+            }, 30000);
+        }
+
+        function handlePrediction(data) {
+            if (data.class_6 === 'N/A' && !data.phone_connected) return;
+
+            predictionCount++;
+
+            // Update hero
+            $hero.classList.remove('waiting');
+            $hero.classList.add('active');
+            $heroIcon.textContent = getIcon(data.class_6);
+            $heroText.textContent = formatLabel(data.class_6);
+            $heroText.style.opacity = '1';
+            $heroCode.textContent = data.class_6;
+
+            // Update schemes
+            $class5Value.textContent = formatLabel(data.class_5);
+            $class5Code.textContent = data.class_5;
+            $class4Value.textContent = formatLabel(data.class_4);
+            $class4Code.textContent = data.class_4;
+
+            // Phone status
+            $phoneStatus.textContent = 'Connected';
+            $phoneStatus.className = 'status-card-value green';
+            $phoneSub.textContent = 'Streaming sensor data';
+
+            // Set phone timeout — if no prediction in 10s, mark as idle
+            clearTimeout(phoneTimeout);
+            phoneTimeout = setTimeout(() => {
+                $phoneStatus.textContent = 'Idle';
+                $phoneStatus.className = 'status-card-value amber';
+                $phoneSub.textContent = 'No recent data';
+            }, 10000);
+
+            // Prediction count
+            $predCount.textContent = predictionCount;
+
+            // Last update time
+            const now = new Date();
+            $lastUpdate.textContent = now.toLocaleTimeString();
+            $lastUpdateSub.textContent = now.toLocaleDateString();
+
+            // History
+            history.unshift({
+                class_6: data.class_6,
+                class_5: data.class_5,
+                class_4: data.class_4,
+                time: now
+            });
+            if (history.length > MAX_HISTORY) history.pop();
+            renderHistory();
+        }
+
+        function renderHistory() {
+            if (history.length === 0) {
+                $historyList.innerHTML = `
+                    <div class="history-empty">
+                        <div class="history-empty-icon">📭</div>
+                        <div>No predictions yet. Start the WherePhone app on your iPhone.</div>
+                    </div>`;
+                $historyCount.textContent = '0 entries';
+                return;
+            }
+
+            $historyCount.textContent = `${history.length} entries`;
+            $historyList.innerHTML = history.map((item, i) => `
+                <div class="history-item" style="animation-delay: ${i * 30}ms">
+                    <div class="history-item-left">
+                        <span class="history-item-icon">${getIcon(item.class_6)}</span>
+                        <span class="history-item-label">${formatLabel(item.class_6)}</span>
+                    </div>
+                    <span class="history-item-time">${item.time.toLocaleTimeString()}</span>
+                </div>
+            `).join('');
+        }
+
+        // --- Init ---
+        connect();
+    </script>
+</body>
+</html>

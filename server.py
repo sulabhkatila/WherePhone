@@ -1,10 +1,14 @@
 import os
+import asyncio
+import json
 from contextlib import asynccontextmanager
 import sys
 import numpy as np
 import pandas as pd
-from typing import Dict, List, Any, Union
-from fastapi import FastAPI, HTTPException
+from typing import Dict, List, Any, Union, Set
+from datetime import datetime
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 import scipy.stats as stats
 import scipy.signal as signal
@@ -43,6 +47,10 @@ selected_features = []
 class_names = ['LB', 'H', 'BP', 'FP', 'CP', 'SB']
 parsed_trees = []
 learner_weights = []
+
+# WebSocket clients for live dashboard broadcasting
+connected_clients: Set[WebSocket] = set()
+latest_prediction: dict = {"class_6": "N/A", "class_5": "N/A", "class_4": "N/A", "timestamp": None, "phone_connected": False}
 
 # Label Mapping Functions
 def map_to_5_classes(label: str) -> str:
@@ -536,6 +544,19 @@ def predict(payload: dict):
             x = ios_dataformat(payload)
             
         results = run_predictions(x)
+        
+        # Broadcast to all connected WebSocket dashboard clients
+        broadcast_data = {
+            "type": "prediction",
+            "class_6": results["class_6"],
+            "class_5": results["class_5"],
+            "class_4": results["class_4"],
+            "timestamp": datetime.now().isoformat(),
+            "phone_connected": True
+        }
+        latest_prediction.update(broadcast_data)
+        asyncio.create_task(broadcast(broadcast_data))
+        
         return results
         
     except ValueError as e:
@@ -544,6 +565,44 @@ def predict(payload: dict):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Server inference error: {str(e)}")
+
+# --- WebSocket for live dashboard ---
+
+async def broadcast(data: dict):
+    """Broadcast a message to all connected WebSocket clients."""
+    message = json.dumps(data)
+    disconnected = set()
+    for ws in connected_clients:
+        try:
+            await ws.send_text(message)
+        except Exception:
+            disconnected.add(ws)
+    connected_clients.difference_update(disconnected)
+
+@app.websocket("/ws")
+async def websocket_endpoint(ws: WebSocket):
+    await ws.accept()
+    connected_clients.add(ws)
+    print(f"Dashboard client connected. Total clients: {len(connected_clients)}")
+    # Send current state immediately on connect
+    try:
+        await ws.send_text(json.dumps({**latest_prediction, "type": "state"}))
+        while True:
+            # Keep connection alive; listen for pings/messages from client
+            data = await ws.receive_text()
+            if data == "ping":
+                await ws.send_text(json.dumps({"type": "pong"}))
+    except WebSocketDisconnect:
+        pass
+    finally:
+        connected_clients.discard(ws)
+        print(f"Dashboard client disconnected. Total clients: {len(connected_clients)}")
+
+@app.get("/dashboard", response_class=HTMLResponse)
+def serve_dashboard():
+    dashboard_path = os.path.join(BASE_DIR, "dashboard.html")
+    with open(dashboard_path, "r") as f:
+        return f.read()
 
 if __name__ == "__main__":
     import uvicorn
