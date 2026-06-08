@@ -1,4 +1,5 @@
 import os
+from contextlib import asynccontextmanager
 import sys
 import numpy as np
 import pandas as pd
@@ -20,10 +21,16 @@ except ImportError:
     else:
         raise ImportError("mat-io library is not installed. Run 'pip install mat-io' first.")
 
+@asynccontextmanager
+async def lifespan(app):
+    load_model_on_startup()
+    yield
+
 app = FastAPI(
     title="Smartphone Placement Recognition API",
     description="API for recognizing smartphone placement (body location) using raw iOS sensor data or pre-computed features.",
-    version="2.0.0"
+    version="2.0.0",
+    lifespan=lifespan
 )
 
 # Configuration and Paths
@@ -396,7 +403,6 @@ def ios_dataformat(raw_data: dict) -> np.ndarray:
 
 # --- Server Lifecycle & Endpoints ---
 
-@app.on_event("startup")
 def load_model_on_startup():
     global selected_features, parsed_trees, learner_weights
     
