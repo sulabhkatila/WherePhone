@@ -495,6 +495,7 @@ def predict(payload: dict):
     # 1. Standard raw iOS data payload (JSON object containing "motion" or separate "accelerometer" and "gyroscope" lists)
     # 2. Legacy pre-computed 50 features payload (JSON object containing "data" key as dict or list)
     
+    print("Connection created")
     try:
         if "data" in payload:
             # Handle direct pre-computed features input
@@ -523,6 +524,8 @@ def predict(payload: dict):
         
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Server inference error: {str(e)}")
 
