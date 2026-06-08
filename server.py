@@ -406,7 +406,7 @@ def load_model_on_startup():
         
     # Load feature selection results
     feat_data = matio.load_from_mat(FEAT_SEL_PATH)
-    selected_features = [s[0] if hasattr(s, 'flat') else s for s in feat_data['selected_features'].flat]
+    selected_features = [str(s[0]) if hasattr(s, 'flat') else str(s) for s in feat_data['selected_features'].flat]
     print(f"Loaded {len(selected_features)} selected features.")
     
     # Load ensemble model
