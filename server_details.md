@@ -2,21 +2,23 @@
 
 This document describes how to use, configure, and communicate with the placement recognition model server (`server.py`).
 
-The server exposes a **FastAPI** application that serves the pre-trained AdaBoost ensemble model directly in Python using `mat-io` for reading the `.mat` file structures. Inference runs locally in pure Python with no MATLAB runtime requirement.
+The server exposes a **FastAPI** application that serves the pre-trained AdaBoost ensemble model directly in Python. It supports **dual-input modes**:
+1. **Raw iOS CoreMotion sensor values** (automatically preprocessed, resampled, and feature-extracted on the fly).
+2. **Pre-computed 50 features** (directly passed as a dictionary or a vector).
 
 ---
 
-## Getting Started
+## 🚀 Getting Started
 
 ### 1. Installation
 
-A local virtual environment has been created. To activate it and run the server, use:
+Activate the local virtual environment and install the required dependencies:
 
 ```bash
 # Activate the virtual environment
 source venv/bin/activate
 
-# Install the server dependencies (if not already done)
+# Install the server dependencies
 pip install -r requirements.txt
 ```
 
@@ -28,7 +30,7 @@ Start the API server by running:
 python server.py
 ```
 
-The server will initialize, load the model (`ensModel.mat`) and selected feature names (`FeatSel_Results.mat`), parse all 449 decision trees into memory, and start listening on:
+The server will load the model, parse the 449 decision trees into memory, and start listening on:
 `http://0.0.0.0:8000`
 
 ---
@@ -56,62 +58,94 @@ The server will initialize, load the model (`ensModel.mat`) and selected feature
 
 ### 2. Placement Prediction
 * **URL**: `POST /predict`
-* **Description**: Accepts a single data sample containing 10-second walking window features and responds with the predicted smartphone placements under 3 different granularity schemes (6-class, 5-class, and 4-class).
+* **Description**: Accepts either raw iOS CoreMotion data or pre-computed features and responds with the predicted smartphone placements under 3 different granularity schemes (6-class, 5-class, and 4-class).
 * **Payload Type**: `application/json`
 
-#### Input Format A: Dictionary (Recommended)
-You can submit a JSON object containing the feature names as keys and float values as values.
+---
+
+## 📱 iOS CoreMotion Ingestion (New)
+
+The `/predict` endpoint can ingest raw iOS data directly. It is designed to handle standard serialization formats from Apple's CoreMotion framework:
+
+### Format 1: Combined Device Motion List (Recommended)
+This format sends a single array of combined accelerometer and gyroscope readings.
+
 * **Request Payload (JSON)**:
   ```json
   {
-    "data": {
-      "CWT_Mean_Acc_B5": 0.871815,
-      "SpecEntropyGyr": 0.165810,
-      "KurtGyr": 1.594311,
-      "... (provide all 50 features) ...": 0.0
-    }
+    "motion": [
+      {
+        "timestamp": 1717849200.00,
+        "acceleration": {"x": 0.05, "y": -0.98, "z": 0.01},
+        "rotationRate": {"x": 0.12, "y": -0.05, "z": 0.03}
+      },
+      {
+        "timestamp": 1717849200.01,
+        "acceleration": {"x": 0.04, "y": -0.99, "z": 0.01},
+        "rotationRate": {"x": 0.10, "y": -0.04, "z": 0.02}
+      }
+      // ... Repeat for a minimum of 9.0 seconds of walking data (ideally 10.0s) ...
+    ]
   }
   ```
+> **Note**: Both `"acceleration"` and `"userAcceleration"` are supported keys.
 
-#### Input Format B: Vector List
-You can submit a JSON array of exactly 50 float values in the same order as returned by the `GET /` endpoint.
+---
+
+### Format 2: Separate Accelerometer & Gyroscope Arrays
+This format handles separate sensor threads, which often log separate time series due to different collection rates or callbacks in Swift/Obj-C.
+
 * **Request Payload (JSON)**:
   ```json
   {
-    "data": [
-      0.871815,
-      0.165810,
-      1.594311,
-      "... (provide exactly 50 floats) ..."
+    "accelerometer": [
+      {"timestamp": 1717849200.00, "x": 0.05, "y": -0.98, "z": 0.01},
+      {"timestamp": 1717849200.01, "x": 0.04, "y": -0.99, "z": 0.01}
+      // ... minimum 9.0 seconds of data ...
+    ],
+    "gyroscope": [
+      {"timestamp": 1717849200.00, "x": 0.12, "y": -0.05, "z": 0.03},
+      {"timestamp": 1717849200.01, "x": 0.10, "y": -0.04, "z": 0.02}
+      // ... minimum 9.0 seconds of data ...
     ]
   }
   ```
 
-#### Response Payload (JSON)
-* **Response**:
-  ```json
-  {
-    "class_6": "LB",
-    "class_5": "LB",
-    "class_4": "LB"
-  }
-  ```
+---
+
+## ⚙️ Data Preprocessing & Feature Extraction Pipeline
+
+When the server receives iOS data, it runs it through a custom-built digital signal processing (DSP) pipeline inside the `ios_dataformat` function:
+
+1. **Unit Conversion**: iOS CoreMotion expresses raw acceleration in **G's**. The model expects values in **m/s²**. The server automatically multiplies all incoming `x`, `y`, `z` accelerometer values by $9.80665 \text{ m/s}^2$ to correct this. Gyroscope values remain in **rad/s**.
+2. **Orientation Invariance**: To ensure predictions work regardless of how the user places or rotates the phone, the server collapses the 3-axis signals into 1D **L2 norms** (magnitude vector):
+   $$\text{acc\_norm} = \sqrt{x^2 + y^2 + z^2}$$
+   $$\text{gyr\_norm} = \sqrt{x^2 + y^2 + z^2}$$
+3. **Resampling**: To normalize sample rates (e.g. if the iOS app collected data at 50 Hz, 60 Hz, or with slight jitters), the server performs a **linear interpolation** to resample both norms onto a uniform grid of exactly **100 Hz** spanning a **10-second window** (exactly 1000 points).
+4. **On-the-fly Feature Extraction**: The server computes:
+   * **Statistics**: Mean, Variance, Skewness, Pearson Kurtosis, IQR, RMS, SMA, Max, Range, and Jerk RMS.
+   * **Spectral Features (FFT)**: Mean Frequency, Median Frequency, Spectral Entropy, and Dominant Power.
+   * **Autocorrelation (ACF)**: Raw unnormalized autocorrelation coefficients for lags 1–10.
+   * **Teager Energy Operator (TEO)**: Mean, Variance, and Peak Counts of the TEO signal.
+   * **Multiscale Entropy (MSE)**: Coarse-grained sample entropy for scales 1 through 10.
+   * **Continuous Wavelet Transform (CWT)**: Morse wavelet simulation to compute the Energy, Mean, Std, and Spectral Entropy across 8 distinct frequency bands.
+   * **Harmonic Ratio (HR)**: Fundamental frequency and parity harmonic distribution.
+5. **Feature Mapping**: Filters and orders the computed features to assemble the final 50-length feature vector required by the ensemble classifier.
 
 ---
 
 ## 🏷️ Classification Schemes (The 3 Classes)
 
-The server output reports the predicted placement using three granularity levels mapping to common body locations:
+The output is returned as a JSON object containing the predictions under three classification resolutions:
 
-| Scheme | Classes | Description & Mapping |
-| :--- | :--- | :--- |
-| **class_6** | `LB`, `H`, `BP`, `FP`, `CP`, `SB` | Original 6 placements:<br>- `LB`: Lower-Back (L5 level)<br>- `H`: Hand-held<br>- `BP`: Back pocket (trousers)<br>- `FP`: Front pocket (trousers)<br>- `CP`: Coat pocket<br>- `SB`: Shoulder bag |
-| **class_5** | `LB`, `H`, `TP`, `CP`, `SB` | Merged pockets:<br>- `TP`: Trousers Pocket (merges `FP` & `BP`) |
-| **class_4** | `LB`, `H`, `P`, `SB` | Fully merged pockets:<br>- `P`: Pocket (merges `FP`, `BP`, & `CP`) |
+```json
+{
+  "class_6": "LB",
+  "class_5": "LB",
+  "class_4": "LB"
+}
+```
 
----
-
-## 🛠️ Implementation Details
-
-* **Inference Algorithm**: An ensemble of 449 decision trees trained with AdaBoostM2. The class probability vectors of all trees are averaged weighted by the ensemble's `LearnerWeights`. The class with the highest score is predicted.
-* **Feature Ordering**: The model is sensitive to the order of features. In the dictionary format, the server automatically maps features to the correct columns before sending them to the model, eliminating potential user-side order mismatch bugs.
+* **class_6** (6-classes): `LB` (Lower-Back), `H` (Handheld), `BP` (Back Pocket), `FP` (Front Pocket), `CP` (Coat Pocket), `SB` (Shoulder Bag).
+* **class_5** (5-classes): `LB`, `H`, `TP` (Trousers Pocket - BP & FP merged), `CP`, `SB`.
+* **class_4** (4-classes): `LB`, `H`, `P` (Pocket - BP, FP, & CP merged), `SB`.
